@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>簡易出納帳 | iGenTrade（合同会社威源国際貿易）</title>
+  <meta name="description" content="合同会社威源国際貿易（iGenTrade）が無料提供。日本の中小企業向け簡易出納帳。収入・支出の記録、月次集計、CSV入出力、印刷・PDF。ブラウザ内のみで動作。" />
+  <meta name="keywords" content="合同会社威源国際貿易,威源国際貿易,iGenTrade,簡易出納帳,出納帳,現金出納,帳簿,中小企業,無料ツール" />
+  <meta name="author" content="合同会社威源国際貿易 (iGenTrade)" />
+  <link rel="canonical" href="https://igentrade.github.io/igentrade-suitoubo/" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand">
+      <strong>iGenTrade</strong>
+      <span>簡易出納帳</span>
+    </div>
+    <p class="tagline">合同会社威源国際貿易 提供｜https://www.igentrade.com/｜日本の中小企業向け・無料ツール</p>
+  </header>
+
+  <main class="layout">
+    <aside class="panel no-print">
+      <h2>取引の入力</h2>
+      <input type="hidden" id="editId" value="" />
+      <label>日付
+        <input type="date" id="txDate" />
+      </label>
+      <div class="row2">
+        <label>区分
+          <select id="txType">
+            <option value="income">収入</option>
+            <option value="expense">支出</option>
+          </select>
+        </label>
+        <label>支払方法
+          <select id="txMethod">
+            <option value="現金">現金</option>
+            <option value="口座振込">口座振込</option>
+            <option value="クレジットカード">クレジットカード</option>
+            <option value="電子マネー">電子マネー</option>
+            <option value="その他">その他</option>
+          </select>
+        </label>
+      </div>
+      <label>カテゴリ
+        <select id="txCategory"></select>
+      </label>
+      <label>金額（円）
+        <input type="number" id="txAmount" min="0" step="1" placeholder="例: 5000" />
+      </label>
+      <label>メモ
+        <textarea id="txMemo" rows="2" placeholder="摘要・取引先など"></textarea>
+      </label>
+      <div class="actions">
+        <button type="button" id="saveTx" class="btn primary">追加</button>
+        <button type="button" id="cancelEdit" class="btn secondary hidden">編集取消</button>
+      </div>
+
+      <h3>絞り込み</h3>
+      <div class="row2">
+        <label>開始日
+          <input type="date" id="filterFrom" />
+        </label>
+        <label>終了日
+          <input type="date" id="filterTo" />
+        </label>
+      </div>
+      <div class="row2">
+        <label>区分
+          <select id="filterType">
+            <option value="">すべて</option>
+            <option value="income">収入</option>
+            <option value="expense">支出</option>
+          </select>
+        </label>
+        <label>カテゴリ
+          <select id="filterCategory">
+            <option value="">すべて</option>
+          </select>
+        </label>
+      </div>
+      <label>メモ検索
+        <input type="search" id="filterMemo" placeholder="キーワード" />
+      </label>
+      <div class="actions">
+        <button type="button" id="applyFilter" class="btn secondary">適用</button>
+        <button type="button" id="clearFilter" class="btn secondary">クリア</button>
+      </div>
+
+      <h3>カテゴリ編集</h3>
+      <p class="hint">収入・支出それぞれに既定カテゴリがあります。変更はブラウザに保存されます。</p>
+      <label>対象
+        <select id="catEditType">
+          <option value="income">収入</option>
+          <option value="expense">支出</option>
+        </select>
+      </label>
+      <div id="categoryList" class="category-list"></div>
+      <div class="actions">
+        <button type="button" id="addCategory" class="btn small secondary">カテゴリ追加</button>
+        <button type="button" id="resetCategories" class="btn small secondary">既定に戻す</button>
+      </div>
+
+      <h3>データ操作</h3>
+      <div class="actions">
+        <button type="button" id="exportCsv" class="btn secondary">CSV出力</button>
+        <button type="button" id="importCsvBtn" class="btn secondary">CSV取込</button>
+        <input type="file" id="importCsv" accept=".csv,text/csv" class="hidden" />
+        <button type="button" id="loadSample" class="btn secondary">サンプル読込</button>
+        <button type="button" id="clearAll" class="btn danger">全削除</button>
+      </div>
+      <p class="hint">CSVは UTF-8 BOM 付きで Excel（日本語）向けに出力します。データはすべて localStorage に保存され、外部送信しません。</p>
+
+      <label class="toggle-brand">
+        <input type="checkbox" id="showBrand" />
+        書類フッターに提供元を表示（通常はオフ推奨）
+      </label>
+      <div class="actions">
+        <button type="button" id="printBtn" class="btn primary">月次レポート印刷 / PDF</button>
+      </div>
+      <p class="hint">関連ツール: <a href="https://igentrade.github.io/igentrade-tools/" target="_blank" rel="noopener">iGenTrade 無料ツール一覧</a> / <a href="https://www.igentrade.com/" target="_blank" rel="noopener">公式サイト</a></p>
+    </aside>
+
+    <section class="main-col">
+      <div class="summary-cards no-print">
+        <div class="card-stat income">
+          <p class="label">収入合計</p>
+          <p class="value" id="sumIncome">¥0</p>
+        </div>
+        <div class="card-stat expense">
+          <p class="label">支出合計</p>
+          <p class="value" id="sumExpense">¥0</p>
+        </div>
+        <div class="card-stat net">
+          <p class="label">差引</p>
+          <p class="value" id="sumNet">¥0</p>
+        </div>
+        <div class="card-stat">
+          <p class="label">期末残高（累計）</p>
+          <p class="value" id="sumBalance">¥0</p>
+        </div>
+      </div>
+
+      <div class="ledger-wrap no-print">
+        <div class="toolbar">
+          <h2>出納一覧</h2>
+          <div class="right">
+            <span class="hint" id="txCount" style="margin:0">0 件</span>
+          </div>
+        </div>
+        <div style="overflow:auto">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>区分</th>
+                <th>カテゴリ</th>
+                <th class="num">金額</th>
+                <th>支払方法</th>
+                <th>メモ</th>
+                <th class="num">残高</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ledgerBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="summary-wrap no-print">
+        <div class="toolbar">
+          <h2>月次集計</h2>
+          <div class="right">
+            <label class="toggle-brand" style="margin:0">
+              <input type="checkbox" id="summaryByCategory" />
+              カテゴリ別も表示
+            </label>
+          </div>
+        </div>
+        <div style="overflow:auto">
+          <table class="summary-table">
+            <thead id="summaryHead"></thead>
+            <tbody id="summaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="report-wrap" id="reportWrap">
+        <article class="sheet" id="sheet">
+          <div class="sheet-head">
+            <div>
+              <p class="doc-label">簡易出納帳レポート</p>
+              <p class="doc-sub">Cashbook / Ledger Report — iGenTrade</p>
+            </div>
+            <div class="meta">
+              <p><span>対象期間</span> <strong id="rPeriod">—</strong></p>
+              <p><span>出力日</span> <strong id="rIssued">—</strong></p>
+              <p><span>件数</span> <strong id="rCount">0</strong></p>
+            </div>
+          </div>
+
+          <div class="report-totals">
+            <div class="box">
+              <p>収入合計</p>
+              <strong id="rIncome">¥0</strong>
+            </div>
+            <div class="box">
+              <p>支出合計</p>
+              <strong id="rExpense">¥0</strong>
+            </div>
+            <div class="box">
+              <p>差引</p>
+              <strong id="rNet">¥0</strong>
+            </div>
+          </div>
+
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>区分</th>
+                <th>カテゴリ</th>
+                <th class="num">金額</th>
+                <th>支払方法</th>
+                <th>メモ</th>
+                <th class="num">残高</th>
+              </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+
+          <footer class="sheet-foot brand-foot is-hidden" id="brandFoot">
+            <p>本ツールは <strong>合同会社威源国際貿易（iGenTrade）</strong> が中小企業向けに無料提供しています。</p>
+            <p class="url">公式サイト: https://www.igentrade.com/</p>
+            <p class="url">https://github.com/igentrade/igentrade-suitoubo</p>
+          </footer>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-foot no-print">
+    <p>© 合同会社威源国際貿易（iGenTrade）— 日本の中小企業向け無料ツール。商用利用可・改変可（MIT）。</p>
+    <p><a href="https://www.igentrade.com/" target="_blank" rel="noopener">公式サイト: https://www.igentrade.com/</a></p>
+    <p><a href="https://igentrade.github.io/igentrade-tools/" target="_blank" rel="noopener">無料ツール一覧</a></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
