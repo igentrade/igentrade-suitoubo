@@ -346,6 +346,41 @@ body {
 .sheet-foot .url { margin: .2rem 0 0; word-break: break-all; }
 .brand-foot.is-hidden { display: none !important; }
 
+
+.usage-stats {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin: 0 auto 0.75rem;
+  flex-wrap: wrap;
+}
+.usage-stat {
+  min-width: 7rem;
+  padding: 0.65rem 1.1rem;
+  border: 1px solid var(--border, #d8e0e8);
+  border-radius: 10px;
+  background: #fff;
+}
+.usage-num {
+  display: block;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--accent, #0d7377);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.usage-label {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted, #667);
+}
+.usage-note {
+  font-size: 0.75rem;
+  opacity: 0.9;
+  margin: 0 0 1rem;
+}
+
 .site-foot {
   text-align: center;
   color: var(--muted);

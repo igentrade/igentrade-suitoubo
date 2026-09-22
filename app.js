@@ -3,6 +3,12 @@
 
   const STORAGE_KEY = "igentrade-suitoubo-v2";
   const STORAGE_KEY_LEGACY = "igentrade-suitoubo-v1";
+  const TRY_FLAG_KEY = "igentrade-suitoubo-try-counted";
+  const VIEW_SESSION_KEY = "igentrade-suitoubo-view-session";
+  const STAT_NAMESPACE = "igentrade";
+  const STAT_VIEWS = "suitoubo-views";
+  const STAT_TRIES = "suitoubo-tries";
+  const STAT_BASE = "https://tally.yuki.sh/hits";
   const METHODS = ["現金", "口座振込", "クレジットカード", "電子マネー", "その他"];
 
   const DEFAULT_CATEGORIES = {
@@ -533,6 +539,7 @@
     saveState();
     clearForm();
     renderLedger();
+    recordToolTry();
   }
 
   function deleteTransaction(id) {
@@ -725,6 +732,7 @@
     fillCategorySelects();
     renderCategoryEditor();
     renderLedger();
+    recordToolTry();
     alert(`CSVを取り込みました（新規 ${added} 件。同一IDは上書き）。`);
   }
 
@@ -775,6 +783,7 @@
     fillCategorySelects();
     renderCategoryEditor();
     renderLedger();
+    recordToolTry();
   }
 
   function clearAll() {
@@ -784,6 +793,86 @@
     saveState();
     clearForm();
     renderLedger();
+  }
+
+
+  function formatCount(n) {
+    const num = Number(n);
+    if (!Number.isFinite(num) || num < 0) return "—";
+    return new Intl.NumberFormat("ja-JP").format(Math.floor(num));
+  }
+
+  function setStatText(id, value) {
+    const node = el(id);
+    if (node) node.textContent = formatCount(value);
+  }
+
+  async function fetchStat(resource, { increment } = { increment: false }) {
+    const q = increment ? "" : "?mode=read";
+    const url = `${STAT_BASE}/${STAT_NAMESPACE}/${resource}.json${q}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`stat ${resource} ${res.status}`);
+    const data = await res.json();
+    // Prefer unique-ish visitor count for "人数"; fall back to visit total.
+    const visitor = Number(data.visitor);
+    const visit = Number(data.visit);
+    if (Number.isFinite(visitor) && visitor > 0) return visitor;
+    if (Number.isFinite(visit)) return visit;
+    return 0;
+  }
+
+  async function refreshStats({ bumpViews } = { bumpViews: false }) {
+    try {
+      let views;
+      if (bumpViews) {
+        views = await fetchStat(STAT_VIEWS, { increment: true });
+      } else {
+        views = await fetchStat(STAT_VIEWS, { increment: false });
+      }
+      setStatText("statViews", views);
+    } catch (err) {
+      console.warn("view stat failed", err);
+    }
+    try {
+      const tries = await fetchStat(STAT_TRIES, { increment: false });
+      setStatText("statTries", tries);
+    } catch (err) {
+      console.warn("try stat failed", err);
+    }
+  }
+
+  async function recordPageView() {
+    let shouldBump = false;
+    try {
+      if (!sessionStorage.getItem(VIEW_SESSION_KEY)) {
+        sessionStorage.setItem(VIEW_SESSION_KEY, "1");
+        shouldBump = true;
+      }
+    } catch (_) {
+      shouldBump = true;
+    }
+    await refreshStats({ bumpViews: shouldBump });
+  }
+
+  async function recordToolTry() {
+    try {
+      if (localStorage.getItem(TRY_FLAG_KEY) === "1") return;
+      localStorage.setItem(TRY_FLAG_KEY, "1");
+    } catch (_) {
+      // If localStorage is blocked, still attempt a remote count once this session.
+      try {
+        if (sessionStorage.getItem(TRY_FLAG_KEY) === "1") return;
+        sessionStorage.setItem(TRY_FLAG_KEY, "1");
+      } catch (__) {
+        /* ignore */
+      }
+    }
+    try {
+      const tries = await fetchStat(STAT_TRIES, { increment: true });
+      setStatText("statTries", tries);
+    } catch (err) {
+      console.warn("try increment failed", err);
+    }
   }
 
   function syncBrandFoot() {
@@ -920,6 +1009,7 @@
     bindEvents();
     updateTaxPreview();
     renderLedger();
+    recordPageView();
   }
 
   if (document.readyState === "loading") {
