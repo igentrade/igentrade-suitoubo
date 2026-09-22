@@ -46,9 +46,25 @@
       <label>カテゴリ
         <select id="txCategory"></select>
       </label>
+      <div class="row2">
+        <label>消費税
+          <select id="txTaxRate">
+            <option value="0.10" selected>10%</option>
+            <option value="0.08">8%（軽減）</option>
+            <option value="0">0%（非課税等）</option>
+          </select>
+        </label>
+        <label>金額の意味
+          <select id="txTaxMode">
+            <option value="inclusive" selected>税込で入力</option>
+            <option value="exclusive">税抜で入力</option>
+          </select>
+        </label>
+      </div>
       <label>金額（円）
         <input type="number" id="txAmount" min="0" step="1" placeholder="例: 5000" />
       </label>
+      <p class="hint" id="taxPreview">税抜 — / 消費税 — / 税込 —</p>
       <label>メモ
         <textarea id="txMemo" rows="2" placeholder="摘要・取引先など"></textarea>
       </label>
@@ -156,7 +172,10 @@
                 <th>日付</th>
                 <th>区分</th>
                 <th>カテゴリ</th>
-                <th class="num">金額</th>
+                <th>税率</th>
+                <th class="num">税抜</th>
+                <th class="num">税額</th>
+                <th class="num">税込</th>
                 <th>支払方法</th>
                 <th>メモ</th>
                 <th class="num">残高</th>
@@ -221,7 +240,10 @@
                 <th>日付</th>
                 <th>区分</th>
                 <th>カテゴリ</th>
-                <th class="num">金額</th>
+                <th>税率</th>
+                <th class="num">税抜</th>
+                <th class="num">税額</th>
+                <th class="num">税込</th>
                 <th>支払方法</th>
                 <th>メモ</th>
                 <th class="num">残高</th>

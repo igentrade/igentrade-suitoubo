@@ -1,7 +1,8 @@
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "igentrade-suitoubo-v1";
+  const STORAGE_KEY = "igentrade-suitoubo-v2";
+  const STORAGE_KEY_LEGACY = "igentrade-suitoubo-v1";
   const METHODS = ["現金", "口座振込", "クレジットカード", "電子マネー", "その他"];
 
   const DEFAULT_CATEGORIES = {
@@ -43,6 +44,71 @@
     return t === "income" ? "収入" : "支出";
   }
 
+
+  function taxRateLabel(rate) {
+    const r = Number(rate) || 0;
+    if (r === 0.08) return "8%";
+    if (r === 0.1 || r === 0.10) return "10%";
+    if (r === 0) return "0%";
+    return `${Math.round(r * 100)}%`;
+  }
+
+  function splitTax(inputAmount, rate, mode) {
+    const amt = Math.round(Number(inputAmount) || 0);
+    const r = Number(rate) || 0;
+    if (r <= 0) {
+      return { net: amt, tax: 0, gross: amt, rate: 0, mode: mode || "inclusive" };
+    }
+    if (mode === "exclusive") {
+      const net = amt;
+      const tax = Math.floor(net * r);
+      return { net, tax, gross: net + tax, rate: r, mode: "exclusive" };
+    }
+    const gross = amt;
+    const net = Math.floor(gross / (1 + r));
+    const tax = gross - net;
+    return { net, tax, gross, rate: r, mode: "inclusive" };
+  }
+
+  function normalizeTx(t) {
+    if (!t || typeof t !== "object") return null;
+    const amount = Math.round(Number(t.amount) || 0);
+    let rate = t.taxRate;
+    if (rate === undefined || rate === null || rate === "") rate = 0;
+    rate = Number(rate) || 0;
+    const mode = t.taxMode === "exclusive" ? "exclusive" : "inclusive";
+    let net = t.netAmount;
+    let tax = t.taxAmount;
+    if (net === undefined || tax === undefined || net === null || tax === null) {
+      // legacy rows: treat stored amount as 税込, default 0% unless taxRate set
+      const parts = splitTax(amount, rate, "inclusive");
+      net = parts.net;
+      tax = parts.tax;
+    }
+    return {
+      ...t,
+      amount: Math.round(Number(net) + Number(tax)) || amount, // 税込を帳簿金額に
+      taxRate: rate,
+      taxMode: mode,
+      netAmount: Math.round(Number(net) || 0),
+      taxAmount: Math.round(Number(tax) || 0),
+    };
+  }
+
+  function updateTaxPreview() {
+    const preview = el("taxPreview");
+    if (!preview) return;
+    const amount = parseAmount(el("txAmount").value);
+    const rate = Number(el("txTaxRate").value);
+    const mode = el("txTaxMode").value;
+    if (amount === null) {
+      preview.textContent = "税抜 — / 消費税 — / 税込 —";
+      return;
+    }
+    const parts = splitTax(amount, rate, mode);
+    preview.textContent = `税抜 ${yen(parts.net)} / 消費税 ${yen(parts.tax)} / 税込 ${yen(parts.gross)}`;
+  }
+
   function parseAmount(v) {
     const n = Number(String(v).replace(/[,，\s]/g, ""));
     if (!Number.isFinite(n) || n < 0) return null;
@@ -51,7 +117,10 @@
 
   function loadState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw && typeof STORAGE_KEY_LEGACY !== "undefined") {
+        raw = localStorage.getItem(STORAGE_KEY_LEGACY);
+      }
       if (!raw) {
         return {
           transactions: [],
@@ -64,8 +133,9 @@
       const data = JSON.parse(raw);
       if (!data || typeof data !== "object") throw new Error("bad");
       const cats = data.categories || {};
+      const txs = Array.isArray(data.transactions) ? data.transactions : [];
       return {
-        transactions: Array.isArray(data.transactions) ? data.transactions : [],
+        transactions: txs.map(normalizeTx).filter(Boolean),
         categories: {
           income: Array.isArray(cats.income) && cats.income.length
             ? cats.income.map(String)
@@ -221,10 +291,13 @@
     el("txType").value = "expense";
     el("txMethod").value = "現金";
     el("txAmount").value = "";
+    el("txTaxRate").value = "0.10";
+    el("txTaxMode").value = "inclusive";
     el("txMemo").value = "";
     fillCategorySelects();
     el("saveTx").textContent = "追加";
     el("cancelEdit").classList.add("hidden");
+    updateTaxPreview();
   }
 
   function fillForm(tx) {
@@ -235,11 +308,16 @@
     ensureCategoryExists(tx.type, tx.category);
     fillCategorySelects();
     el("txCategory").value = tx.category;
-    el("txAmount").value = tx.amount;
-    el("txMemo").value = tx.memo || "";
-    el("txMethod").value = METHODS.includes(tx.method) ? tx.method : "その他";
+    const ntx = normalizeTx(tx);
+    el("txTaxRate").value = String(ntx.taxRate === 0.08 ? "0.08" : ntx.taxRate === 0 ? "0" : "0.10");
+    el("txTaxMode").value = ntx.taxMode === "exclusive" ? "exclusive" : "inclusive";
+    // show the amount in the mode user last used
+    el("txAmount").value = ntx.taxMode === "exclusive" ? ntx.netAmount : ntx.amount;
+    el("txMemo").value = ntx.memo || "";
+    el("txMethod").value = METHODS.includes(ntx.method) ? ntx.method : "その他";
     el("saveTx").textContent = "更新";
     el("cancelEdit").classList.remove("hidden");
+    updateTaxPreview();
   }
 
   function renderLedger() {
@@ -260,24 +338,28 @@
     el("sumBalance").textContent = yen(endBal);
 
     if (!list.length) {
-      body.innerHTML = `<tr><td colspan="8" class="empty-msg">該当する取引がありません。左のフォームから追加するか、サンプルを読み込んでください。</td></tr>`;
+      body.innerHTML = `<tr><td colspan="11" class="empty-msg">該当する取引がありません。左のフォームから追加するか、サンプルを読み込んでください。</td></tr>`;
     } else {
       const editId = el("editId").value;
       body.innerHTML = list
         .map((t) => {
-          const cls = t.type === "income" ? "type-income" : "type-expense";
-          const rowCls = t.id === editId ? "is-editing" : "";
-          return `<tr class="${rowCls}" data-id="${escapeHtml(t.id)}">
-            <td>${escapeHtml(t.date)}</td>
-            <td class="${cls}">${typeLabel(t.type)}</td>
-            <td>${escapeHtml(t.category || "")}</td>
-            <td class="num">${yen(t.amount)}</td>
-            <td>${escapeHtml(t.method || "")}</td>
-            <td class="memo-cell">${escapeHtml(t.memo || "")}</td>
-            <td class="num">${yen(bals.get(t.id) || 0)}</td>
+          const ntx = normalizeTx(t);
+          const cls = ntx.type === "income" ? "type-income" : "type-expense";
+          const rowCls = ntx.id === editId ? "is-editing" : "";
+          return `<tr class="${rowCls}" data-id="${escapeHtml(ntx.id)}">
+            <td>${escapeHtml(ntx.date)}</td>
+            <td class="${cls}">${typeLabel(ntx.type)}</td>
+            <td>${escapeHtml(ntx.category || "")}</td>
+            <td>${taxRateLabel(ntx.taxRate)}</td>
+            <td class="num">${yen(ntx.netAmount)}</td>
+            <td class="num">${yen(ntx.taxAmount)}</td>
+            <td class="num">${yen(ntx.amount)}</td>
+            <td>${escapeHtml(ntx.method || "")}</td>
+            <td class="memo-cell">${escapeHtml(ntx.memo || "")}</td>
+            <td class="num">${yen(bals.get(ntx.id) || 0)}</td>
             <td class="row-actions">
-              <button type="button" data-edit="${escapeHtml(t.id)}">編集</button>
-              <button type="button" class="del" data-del="${escapeHtml(t.id)}">削除</button>
+              <button type="button" data-edit="${escapeHtml(ntx.id)}">編集</button>
+              <button type="button" class="del" data-del="${escapeHtml(ntx.id)}">削除</button>
             </td>
           </tr>`;
         })
@@ -373,20 +455,24 @@
 
     const body = el("reportBody");
     if (!list.length) {
-      body.innerHTML = `<tr><td colspan="7" class="empty-msg">該当なし</td></tr>`;
+      body.innerHTML = `<tr><td colspan="9" class="empty-msg">該当なし</td></tr>`;
       return;
     }
     body.innerHTML = list
       .map((t) => {
-        const cls = t.type === "income" ? "type-income" : "type-expense";
+        const ntx = normalizeTx(t);
+        const cls = ntx.type === "income" ? "type-income" : "type-expense";
         return `<tr>
-          <td>${escapeHtml(t.date)}</td>
-          <td class="${cls}">${typeLabel(t.type)}</td>
-          <td>${escapeHtml(t.category || "")}</td>
-          <td class="num">${yen(t.amount)}</td>
-          <td>${escapeHtml(t.method || "")}</td>
-          <td>${escapeHtml(t.memo || "")}</td>
-          <td class="num">${yen(bals.get(t.id) || 0)}</td>
+          <td>${escapeHtml(ntx.date)}</td>
+          <td class="${cls}">${typeLabel(ntx.type)}</td>
+          <td>${escapeHtml(ntx.category || "")}</td>
+          <td>${taxRateLabel(ntx.taxRate)}</td>
+          <td class="num">${yen(ntx.netAmount)}</td>
+          <td class="num">${yen(ntx.taxAmount)}</td>
+          <td class="num">${yen(ntx.amount)}</td>
+          <td>${escapeHtml(ntx.method || "")}</td>
+          <td>${escapeHtml(ntx.memo || "")}</td>
+          <td class="num">${yen(bals.get(ntx.id) || 0)}</td>
         </tr>`;
       })
       .join("");
@@ -396,16 +482,18 @@
     const date = el("txDate").value;
     const type = el("txType").value;
     const category = el("txCategory").value;
-    const amount = parseAmount(el("txAmount").value);
+    const inputAmount = parseAmount(el("txAmount").value);
     const memo = el("txMemo").value.trim();
     const method = el("txMethod").value;
+    const taxRate = Number(el("txTaxRate").value);
+    const taxMode = el("txTaxMode").value;
     const editId = el("editId").value;
 
     if (!date) {
       alert("日付を入力してください。");
       return;
     }
-    if (amount === null || amount <= 0) {
+    if (inputAmount === null || inputAmount <= 0) {
       alert("金額は1円以上の数値で入力してください。");
       return;
     }
@@ -414,28 +502,32 @@
       return;
     }
 
+    const parts = splitTax(inputAmount, taxRate, taxMode);
+    const payload = {
+      date,
+      type,
+      category,
+      amount: parts.gross,
+      netAmount: parts.net,
+      taxAmount: parts.tax,
+      taxRate: parts.rate,
+      taxMode: parts.mode,
+      memo,
+      method,
+    };
+
     if (editId) {
       const idx = state.transactions.findIndex((t) => t.id === editId);
       if (idx >= 0) {
         state.transactions[idx] = {
           ...state.transactions[idx],
-          date,
-          type,
-          category,
-          amount,
-          memo,
-          method,
+          ...payload,
         };
       }
     } else {
       state.transactions.push({
         id: uid(),
-        date,
-        type,
-        category,
-        amount,
-        memo,
-        method,
+        ...payload,
       });
     }
     saveState();
@@ -459,18 +551,22 @@
 
   function exportCsv() {
     const list = filteredTransactions();
-    const header = ["日付", "区分", "カテゴリ", "金額", "支払方法", "メモ", "ID"];
+    const header = ["日付", "区分", "カテゴリ", "税率", "税抜", "消費税", "税込", "支払方法", "メモ", "ID"];
     const lines = [header.join(",")];
     list.forEach((t) => {
+      const ntx = normalizeTx(t);
       lines.push(
         [
-          t.date,
-          typeLabel(t.type),
-          t.category,
-          t.amount,
-          t.method,
-          t.memo,
-          t.id,
+          ntx.date,
+          typeLabel(ntx.type),
+          ntx.category,
+          taxRateLabel(ntx.taxRate),
+          ntx.netAmount,
+          ntx.taxAmount,
+          ntx.amount,
+          ntx.method,
+          ntx.memo,
+          ntx.id,
         ]
           .map(csvEscape)
           .join(",")
@@ -549,14 +645,28 @@
     const iDate = idx(["日付", "date", "Date"]);
     const iType = idx(["区分", "種別", "type", "Type"]);
     const iCat = idx(["カテゴリ", "category", "Category"]);
-    const iAmt = idx(["金額", "amount", "Amount"]);
+    const iAmt = idx(["税込", "金額", "amount", "Amount"]);
+    const iNet = idx(["税抜", "net", "Net"]);
+    const iTax = idx(["消費税", "税額", "tax", "Tax"]);
+    const iRate = idx(["税率", "taxRate", "TaxRate"]);
     const iMethod = idx(["支払方法", "method", "Method"]);
     const iMemo = idx(["メモ", "摘要", "memo", "Memo"]);
     const iId = idx(["ID", "id"]);
 
     if (iDate < 0 || iType < 0 || iAmt < 0) {
-      alert("CSVヘッダーに「日付」「区分」「金額」が必要です。");
+      alert("CSVヘッダーに「日付」「区分」「金額（または税込）」が必要です。");
       return;
+    }
+
+    function parseRate(v) {
+      const s = String(v ?? "").trim();
+      if (!s) return 0;
+      if (s.includes("8")) return 0.08;
+      if (s.includes("10")) return 0.1;
+      if (s.includes("0")) return 0;
+      const n = Number(s.replace("%", ""));
+      if (!Number.isFinite(n)) return 0;
+      return n > 1 ? n / 100 : n;
     }
 
     let added = 0;
@@ -582,9 +692,29 @@
         iId >= 0 && String(cols[iId] || "").trim()
           ? String(cols[iId]).trim()
           : uid();
+      const taxRate = iRate >= 0 ? parseRate(cols[iRate]) : 0;
+      let netAmount = iNet >= 0 ? parseAmount(cols[iNet]) : null;
+      let taxAmount = iTax >= 0 ? parseAmount(cols[iTax]) : null;
+      if (netAmount === null || taxAmount === null) {
+        const parts = splitTax(amount, taxRate, "inclusive");
+        netAmount = parts.net;
+        taxAmount = parts.tax;
+      }
       ensureCategoryExists(type, category);
       const existing = state.transactions.findIndex((t) => t.id === id);
-      const tx = { id, date, type, category, amount, memo, method };
+      const tx = normalizeTx({
+        id,
+        date,
+        type,
+        category,
+        amount,
+        netAmount,
+        taxAmount,
+        taxRate,
+        taxMode: "inclusive",
+        memo,
+        method,
+      });
       if (existing >= 0) state.transactions[existing] = tx;
       else {
         state.transactions.push(tx);
@@ -610,21 +740,36 @@
     const pm = `${prevY}-${String(prevM).padStart(2, "0")}`;
 
     const samples = [
-      { date: `${pm}-05`, type: "income", category: "売上", amount: 220000, memo: "先月売上入金", method: "口座振込" },
-      { date: `${pm}-10`, type: "expense", category: "家賃", amount: 80000, memo: "事務所家賃", method: "口座振込" },
-      { date: `${pm}-15`, type: "expense", category: "光熱費", amount: 12500, memo: "電気・ガス", method: "口座振込" },
-      { date: `${pm}-20`, type: "expense", category: "仕入", amount: 45000, memo: "商品仕入", method: "口座振込" },
-      { date: `${base}`, type: "income", category: "売上", amount: 85000, memo: "店頭売上", method: "現金" },
-      { date: todayISO().slice(0, 8) + "03", type: "expense", category: "交通費", amount: 3200, memo: "営業移動", method: "電子マネー" },
-      { date: todayISO().slice(0, 8) + "05", type: "expense", category: "通信費", amount: 8800, memo: "スマホ・回線", method: "クレジットカード" },
-      { date: todayISO().slice(0, 8) + "08", type: "income", category: "入金", amount: 50000, memo: "売掛回収", method: "口座振込" },
-      { date: todayISO().slice(0, 8) + "12", type: "expense", category: "雑費", amount: 2100, memo: "消耗品", method: "現金" },
-      { date: todayISO(), type: "expense", category: "経費", amount: 5400, memo: "会議費", method: "クレジットカード" },
+      { date: `${pm}-05`, type: "income", category: "売上", amount: 220000, taxRate: 0.1, memo: "先月売上入金", method: "口座振込" },
+      { date: `${pm}-10`, type: "expense", category: "家賃", amount: 80000, taxRate: 0.1, memo: "事務所家賃", method: "口座振込" },
+      { date: `${pm}-15`, type: "expense", category: "光熱費", amount: 12500, taxRate: 0.1, memo: "電気・ガス", method: "口座振込" },
+      { date: `${pm}-20`, type: "expense", category: "仕入", amount: 45000, taxRate: 0.08, memo: "軽減税率の仕入", method: "口座振込" },
+      { date: `${base}`, type: "income", category: "売上", amount: 85000, taxRate: 0.1, memo: "店頭売上", method: "現金" },
+      { date: todayISO().slice(0, 8) + "03", type: "expense", category: "交通費", amount: 3200, taxRate: 0.1, memo: "営業移動", method: "電子マネー" },
+      { date: todayISO().slice(0, 8) + "05", type: "expense", category: "通信費", amount: 8800, taxRate: 0.1, memo: "スマホ・回線", method: "クレジットカード" },
+      { date: todayISO().slice(0, 8) + "08", type: "income", category: "入金", amount: 50000, taxRate: 0, memo: "非課税の返金入金", method: "口座振込" },
+      { date: todayISO().slice(0, 8) + "12", type: "expense", category: "雑費", amount: 2100, taxRate: 0.1, memo: "消耗品", method: "現金" },
+      { date: todayISO(), type: "expense", category: "経費", amount: 5400, taxRate: 0.1, memo: "会議費", method: "クレジットカード" },
     ];
 
     samples.forEach((s) => {
       ensureCategoryExists(s.type, s.category);
-      state.transactions.push({ id: uid(), ...s });
+      const parts = splitTax(s.amount, s.taxRate, "inclusive");
+      state.transactions.push(
+        normalizeTx({
+          id: uid(),
+          date: s.date,
+          type: s.type,
+          category: s.category,
+          amount: parts.gross,
+          netAmount: parts.net,
+          taxAmount: parts.tax,
+          taxRate: parts.rate,
+          taxMode: "inclusive",
+          memo: s.memo,
+          method: s.method,
+        })
+      );
     });
     saveState();
     fillCategorySelects();
@@ -648,6 +793,9 @@
 
   function bindEvents() {
     el("txType").addEventListener("change", fillCategorySelects);
+    el("txAmount").addEventListener("input", updateTaxPreview);
+    el("txTaxRate").addEventListener("change", updateTaxPreview);
+    el("txTaxMode").addEventListener("change", updateTaxPreview);
     el("saveTx").addEventListener("click", saveTransaction);
     el("cancelEdit").addEventListener("click", () => {
       clearForm();
@@ -764,10 +912,13 @@
 
   function init() {
     el("txDate").value = todayISO();
+    el("txTaxRate").value = "0.10";
+    el("txTaxMode").value = "inclusive";
     fillCategorySelects();
     renderCategoryEditor();
     syncBrandFoot();
     bindEvents();
+    updateTaxPreview();
     renderLedger();
   }
 
