@@ -381,3 +381,26 @@ body {
     padding: 0;
   }
 }
+
+
+.seo-intro {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 0;
+}
+.seo-intro h1 {
+  margin: 0 0 .5rem;
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+.seo-intro p {
+  margin: 0 0 .45rem;
+  color: var(--muted);
+  font-size: .92rem;
+}
+.seo-intro .seo-sub {
+  font-size: .82rem;
+}
+@media print {
+  .seo-intro { display: none !important; }
+}
