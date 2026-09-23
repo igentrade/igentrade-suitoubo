@@ -306,6 +306,15 @@ body {
   padding-bottom: .85rem;
   margin-bottom: 1rem;
 }
+.doc-company {
+  margin: 0 0 .35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--text, #1a1a1a);
+  min-height: 1.2em;
+}
+.doc-company:empty { display: none; }
 .doc-label {
   margin: 0;
   font-size: 1.5rem;
@@ -399,6 +408,7 @@ body {
   .report-totals { grid-template-columns: 1fr; }
 }
 
+@page { margin: 12mm; }
 @media print {
   body { background: #fff; }
   .no-print { display: none !important; }

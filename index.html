@@ -139,6 +139,11 @@
       </div>
       <p class="hint">CSVは UTF-8 BOM 付きで Excel（日本語）向けに出力します。データはすべて localStorage に保存され、外部送信しません。</p>
 
+      <h3>印刷・PDF</h3>
+      <label>帳票の会社名（印刷時に表示）
+        <input type="text" id="companyName" placeholder="例: 株式会社サンプル" maxlength="120" autocomplete="organization" />
+      </label>
+      <p class="hint">PDF / 印刷では、サイトの検索用タイトルではなく、ここに入力した会社名だけが出ます。</p>
       <label class="toggle-brand">
         <input type="checkbox" id="showBrand" />
         書類フッターに提供元を表示（通常はオフ推奨）
@@ -220,8 +225,9 @@
         <article class="sheet" id="sheet">
           <div class="sheet-head">
             <div>
+              <p class="doc-company" id="rCompany"></p>
               <p class="doc-label">金銭出納帳レポート</p>
-              <p class="doc-sub">簡易出納帳 / Cashbook Report — iGenTrade</p>
+              <p class="doc-sub">簡易出納帳</p>
             </div>
             <div class="meta">
               <p><span>対象期間</span> <strong id="rPeriod">—</strong></p>

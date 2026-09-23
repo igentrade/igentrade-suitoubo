@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "igentrade-suitoubo-v2";
   const STORAGE_KEY_LEGACY = "igentrade-suitoubo-v1";
+  const DEFAULT_DOC_TITLE = document.title;
   const TRY_FLAG_KEY = "igentrade-suitoubo-try-counted";
   const VIEW_SESSION_KEY = "igentrade-suitoubo-view-session";
   const STAT_NAMESPACE = "igentrade";
@@ -134,6 +135,7 @@
             income: DEFAULT_CATEGORIES.income.slice(),
             expense: DEFAULT_CATEGORIES.expense.slice(),
           },
+          companyName: "",
         };
       }
       const data = JSON.parse(raw);
@@ -150,6 +152,7 @@
             ? cats.expense.map(String)
             : DEFAULT_CATEGORIES.expense.slice(),
         },
+        companyName: typeof data.companyName === "string" ? data.companyName : "",
       };
     } catch (_) {
       return {
@@ -158,6 +161,7 @@
           income: DEFAULT_CATEGORIES.income.slice(),
           expense: DEFAULT_CATEGORIES.expense.slice(),
         },
+        companyName: "",
       };
     }
   }
@@ -169,6 +173,7 @@
         JSON.stringify({
           transactions: state.transactions,
           categories: state.categories,
+          companyName: state.companyName || "",
         })
       );
     } catch (err) {
@@ -875,6 +880,30 @@
     }
   }
 
+
+  function syncCompanyUI() {
+    const input = el("companyName");
+    const name = (state.companyName || "").trim();
+    if (input && input.value !== state.companyName) {
+      input.value = state.companyName || "";
+    }
+    const out = el("rCompany");
+    if (out) {
+      out.textContent = name;
+      out.hidden = !name;
+    }
+  }
+
+  function preparePrintTitle() {
+    const name = (state.companyName || "").trim();
+    // Browser PDF headers often use document.title; keep only the user's company name.
+    document.title = name || "金銭出納帳";
+  }
+
+  function restoreDocTitle() {
+    document.title = DEFAULT_DOC_TITLE;
+  }
+
   function syncBrandFoot() {
     const on = el("showBrand").checked;
     el("brandFoot").classList.toggle("is-hidden", !on);
@@ -993,10 +1022,18 @@
     el("clearAll").addEventListener("click", clearAll);
     el("summaryByCategory").addEventListener("change", renderLedger);
     el("showBrand").addEventListener("change", syncBrandFoot);
+    el("companyName").addEventListener("input", () => {
+      state.companyName = el("companyName").value;
+      syncCompanyUI();
+      saveState();
+    });
     el("printBtn").addEventListener("click", () => {
+      syncCompanyUI();
       syncBrandFoot();
+      preparePrintTitle();
       window.print();
     });
+    window.addEventListener("afterprint", restoreDocTitle);
   }
 
   function init() {
@@ -1005,6 +1042,7 @@
     el("txTaxMode").value = "inclusive";
     fillCategorySelects();
     renderCategoryEditor();
+    syncCompanyUI();
     syncBrandFoot();
     bindEvents();
     updateTaxPreview();
